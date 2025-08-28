@@ -1,35 +1,52 @@
 pipeline{
     agent any
+    tools {
+        maven 'maven'
+    }
     stages{
-        stage('github validation'){
+        stage('Checkout'){
           steps{
-                 git url: 'https://github.com/akshu20791/addressbook-cicd-project'
+                 git url: 'https://github.com/prasanthyendluru/addressbook-cicd-project.git' , branch: 'main'
           }
         }
-        stage('compiling the code'){
+        stage('Build with Maven'){
           steps{
-                 sh 'mvn compile'
+                 sh 'mvn clean package -DskipTests'
           }
         }
-        stage('testing the code'){
+        stage('Install Tomcat'){
             steps{
-                sh 'mvn test'
+                withCredentials([sshUserPrivateKey(credentialsId:'prasanth-id',
+                                                   keyFIleVariable: 'SSH_KEY',
+                                                   usernameVariable: 'SSH_USER' )])
+                
+                {
+                    sh ''' 
+                    ANSIBLE_HOST_KEY_CHECKING=FALSE \
+                    ansible-playbook -i "35.176.238.32",-u
+                    $SSH_USER --private-key $SSH_KEY ansible/tomcat-setup.yml
+                    '''
+                }
             }
         }
-        stage('qa of the code'){
+       stage('DEPLOY WAR'){
             steps{
-                sh 'mvn pmd:pmd'
+                withCredentials([sshUserPrivateKey(credentialsId:'prasanth-id',
+                                                   keyFIleVariable: 'SSH_KEY',
+                                                   usernameVariable: 'SSH_USER' )])
+                
+                {
+                    sh ''' 
+                    ANSIBLE_HOST_KEY_CHECKING=FALSE \
+                    ansible-playbook -i "35.176.238.32",-u
+                    $SSH_USER --private-key $SSH_KEY \
+                    ansible/deploy.yml --extra-vars
+                    "war_file=${WORKSPACE}/target/addressbook.war app_name=addressbook"
+                    '''
+                }
             }
         }
-        stage('package'){
-            steps{
-                sh 'mvn package'
-            }
-        }
-        stage("deploy the project on tomcat"){
-            steps{
-                sh "sudo mv /var/lib/jenkins/workspace/pipeline/target/addressbook.war /home/ubuntu/apache-tomcat-8.5.100/webapps/"
-            }
-        }
+        
+       
     }
 }
